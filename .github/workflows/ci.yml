@@ -1,0 +1,214 @@
+name: CI
+
+# ═════════════════════════════════════════════════════════════════════════════
+# apex-workspace-kit CI —— 面向宿主 Android-Guru-Agent 的库模块流水线。
+#
+# 两个 job：
+#   1. build-test       —— 本仓全部验证：纯度门禁（core 零 Android 依赖）+
+#                          全模块编译 + 单测（core 117 项 JVM / explorer 15 项）+
+#                          publishToMavenLocal 发布冒烟（坐标/产物形状）。
+#   2. consumer-check   —— 下游防崩：把本仓与宿主仓库检出为兄弟布局（命中宿主
+#                          settings.gradle.kts 的 includeBuild 兜底分支），验证
+#                          composite 坐标替换真的发生，然后编译宿主 :app。
+#                          E1 迁移期保护：宿主 wiring（settings includeBuild 块 +
+#                          依赖坐标）合入前，consumer-check 以 notice 跳过而非失败；
+#                          宿主 PR 合入后自动转为强校验。
+#
+# 设计对齐 apex-browser-kit 的 ci.yml（同组织拆库先例），差异点：
+#   • 本仓暂无 NDK 依赖（browser-kit 宿主有 native 模块才需要 NDK 预装）；
+#     若宿主 consumer-check 编译 :app 需要 NDK（terminal-native），安装步骤
+#     保留三重防线（预装校验 → sdkmanager 重试 → 官方 zip 直下）。
+# ═════════════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, 'feat/**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & Test (core JVM + explorer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Configure pre-installed Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          # 本库 compileSdk 35：runner 预装多版本 platform；缺失则补装（防御）
+          if [ ! -d "$ANDROID_HOME/platforms/android-35" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              "platforms;android-35" > /dev/null 2>&1 || true
+          fi
+          ls "$ANDROID_HOME/platforms/" || true
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ── 纯度门禁：workspace-core 必须零 Android 依赖 ──────────────────────
+      # 库的分层契约（core 纯 JVM / explorer Compose）靠 CI 而不是自觉维护。
+      - name: Purity gate (workspace-core has zero Android deps)
+        run: |
+          set -euo pipefail
+          VIOLATIONS=$(grep -rEl \
+            'import androidx\.|import android\.|import com\.android\.' \
+            workspace-core/src/main/kotlin/ 2>/dev/null || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::workspace-core 出现 Android 依赖（破坏纯 JVM 契约）"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "✅ workspace-core 纯度通过（零 Android import）"
+
+      # ── 版本列车门禁：两模块 version 必须一致 ─────────────────────────────
+      - name: Version train gate (both modules same version)
+        run: |
+          set -euo pipefail
+          V_CORE=$(grep -oP '^version = "\K[^"]+' workspace-core/build.gradle.kts)
+          V_EXP=$(grep -oP '^version = "\K[^"]+' workspace-explorer/build.gradle.kts)
+          echo "core=$V_CORE explorer=$V_EXP"
+          [ "$V_CORE" = "$V_EXP" ] \
+            || { echo "::error::版本分裂：core=$V_CORE vs explorer=$V_EXP"; exit 1; }
+          echo "✅ 版本列车一致：$V_CORE"
+
+      - name: Build & test all modules
+        run: |
+          ./gradlew assemble \
+            :workspace-core:test \
+            :workspace-explorer:testDebugUnitTest \
+            --no-daemon --stacktrace
+
+      - name: Publish to Maven Local (coordinates smoke test)
+        run: |
+          ./gradlew publishToMavenLocal --no-daemon
+          V=$(grep -oP '^version = "\K[^"]+' workspace-core/build.gradle.kts)
+          test -f "$HOME/.m2/repository/com/apex/workspace/workspace-core/$V/workspace-core-$V.jar" \
+            || { echo "::error::workspace-core jar 未产出"; exit 1; }
+          test -f "$HOME/.m2/repository/com/apex/workspace/workspace-explorer/$V/workspace-explorer-$V.aar" \
+            || { echo "::error::workspace-explorer aar 未产出"; exit 1; }
+          echo "✅ Maven Local 发布冒烟通过（com.apex.workspace:$V）"
+
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            workspace-core/build/reports/tests/
+            workspace-explorer/build/reports/tests/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 下游防崩：宿主 composite build 编译验证（公开仓库只读，无需 PAT）
+  # ─────────────────────────────────────────────────────────────────────────────
+  consumer-check:
+    name: Consumer check (host composite build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout apex-workspace-kit
+        uses: actions/checkout@v4
+        with:
+          path: apex-workspace-kit
+
+      - name: Checkout host (Android-Guru-Agent)
+        uses: actions/checkout@v4
+        with:
+          repository: Ultra-Guru/Android-Guru-Agent
+          ref: main
+          path: host-app
+
+      - name: Rearrange to sibling layout
+        run: |
+          # 宿主 settings 的兜底分支按「兄弟目录 ../apex-workspace-kit 或
+          # 嵌套目录 apex-workspace-kit」探测；actions/checkout 禁止越出
+          # workspace，所以宿主放 host-app/、库放 host-app/apex-workspace-kit
+          # （嵌套兜底分支）—— 与 ci.yml 的 apex-browser-kit 同款布局。
+          mv apex-workspace-kit host-app/apex-workspace-kit
+          ls host-app/
+
+      - name: Check host wiring state (E1 migration guard)
+        id: wiring
+        run: |
+          # 宿主 PR 合入前 settings 没有 workspace-kit 接线 —— 以 notice 跳过
+          # 强校验（CI 保持绿，库可独立演进）；合入后自动转强校验。
+          if grep -q "apex-workspace-kit" host-app/settings.gradle.kts; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+            echo "✅ 宿主 settings 已接线 apex-workspace-kit —— 执行全量 consumer-check"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::宿主 Android-Guru-Agent 尚未接线本库（settings.gradle.kts 无 includeBuild 块）—— E1 迁移期跳过强校验。宿主 PR 合入后本 job 自动转为强校验。"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.wiring.outputs.wired == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Configure Android SDK + NDK (host needs native toolchain)
+        if: steps.wiring.outputs.wired == 'true'
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > host-app/local.properties
+          NDK_VER="27.0.12077973"
+          NDK_DIR="$ANDROID_HOME/ndk/$NDK_VER"
+          if [ ! -f "$NDK_DIR/source.properties" ]; then
+            rm -rf "$NDK_DIR"
+            for ATTEMPT in 1 2; do
+              if yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+                  --install "ndk;$NDK_VER" >/dev/null 2>&1 && \
+                 [ -f "$NDK_DIR/source.properties" ]; then
+                break
+              fi
+              rm -rf "$NDK_DIR"
+              sleep 5
+            done
+          fi
+          [ -f "$NDK_DIR/source.properties" ] \
+            && echo "✅ NDK $NDK_VER 就绪" \
+            || { echo "::error::NDK $NDK_VER 安装失败"; exit 1; }
+
+      - name: Set up Gradle
+        if: steps.wiring.outputs.wired == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify composite dependency substitution
+        if: steps.wiring.outputs.wired == 'true'
+        working-directory: host-app
+        run: |
+          set -euo pipefail
+          ./gradlew :app:dependencies --configuration debugCompileClasspath \
+            --no-daemon 2>/dev/null | grep -E "com\.apex\.workspace" > /tmp/subst.txt || true
+          if [ ! -s /tmp/subst.txt ]; then
+            echo "::error::composite 依赖替换未发生 —— 宿主仍在用远端坐标 com.apex.workspace:*"
+            echo "（includeBuild 未命中或模块 group/name 与宿主 catalog 不一致）"
+            exit 1
+          fi
+          echo "✅ 坐标替换生效："
+          cat /tmp/subst.txt
+
+      - name: Compile host app (debug Kotlin)
+        if: steps.wiring.outputs.wired == 'true'
+        working-directory: host-app
+        run: |
+          ./gradlew :app:compileDebugKotlin -Pkotlin.incremental=false --no-daemon --stacktrace
+          echo "✅ 宿主 :app:compileDebugKotlin 通过（下游无破坏）"

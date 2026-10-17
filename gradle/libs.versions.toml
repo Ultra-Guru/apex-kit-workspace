@@ -1,0 +1,39 @@
+[versions]
+# 与宿主 Android-Guru-Agent 对齐（工具链矩阵：Kotlin 2.3.21 / AGP 8.13.2 /
+# Gradle 8.14 / BOM 2026.02.00）—— composite build 要求两侧 AGP 版本严格一致
+#（AgpVersionCompatibilityRule），宿主升级后本库必须同步，否则下游复合构建
+# 直接解析失败。库侧 Kotlin/Compose 编译器取 2.2.21 / BOM 2025.11.01
+#（≤ 宿主版本，F3 规则：库编译器不得高于宿主）。README 兼容矩阵同步更新。
+kotlin = "2.2.21"
+agp = "8.13.2"
+compose-bom = "2025.11.01"
+coroutines = "1.10.2"
+serialization = "1.9.0"
+maven-publish = "0.30.0"
+lifecycle = "2.8.7"
+junit = "4.13.2"
+# Coil 与宿主同版（app/build.gradle.kts pin 2.6.0）—— 版本一致避免复合构建
+# 时 classpath 双版本；coil-svg 供 SVG 预览渲染
+coil = "2.6.0"
+
+[libraries]
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+junit = { module = "junit:junit", version.ref = "junit" }
+lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons = { module = "androidx.compose.material:material-icons-extended" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coil" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }

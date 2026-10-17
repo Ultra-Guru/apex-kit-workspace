@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Tab bar + header -->
+    <string name="workspace_tab_folder">Folder</string>
+    <string name="workspace_tab_git">Git</string>
+    <string name="workspace_tab_changes">Changes</string>
+    <string name="workspace_tab_badge_fmt">%1$s · %2$d</string>
+    <string name="workspace_close_cd">Close workspace browser</string>
+    <string name="workspace_follow_on">Following</string>
+    <string name="workspace_follow_off">Follow</string>
+    <string name="workspace_follow_cd">Toggle live follow of agent file operations</string>
+    <string name="workspace_agent_active_cd">Agent is running</string>
+
+    <!-- No workspace guide -->
+    <string name="workspace_no_root_title">No workspace</string>
+    <string name="workspace_no_root">No active workspace. Open a workspace from coding mode first.</string>
+    <string name="workspace_no_root_close">Close</string>
+
+    <!-- File tree -->
+    <string name="workspace_tree_filter_hint">Filter files…</string>
+    <string name="workspace_refresh_cd">Refresh</string>
+    <string name="workspace_tree_truncated">Directory too large — some entries omitted</string>
+    <string name="workspace_tree_empty">Directory is empty</string>
+    <string name="workspace_tree_no_match">No matching files</string>
+    <string name="workspace_tree_items_fmt">%1$d items</string>
+    <string name="workspace_tree_changed_fmt">%1$d changed</string>
+
+    <!-- Preview -->
+    <string name="workspace_preview_empty">Select a file to preview its content</string>
+    <string name="workspace_preview_close_cd">Close preview</string>
+    <string name="workspace_preview_back_cd">Back to file tree</string>
+    <string name="workspace_preview_reload_cd">Reload preview</string>
+    <string name="workspace_preview_truncated_fmt">Preview truncated — first %1$d lines</string>
+    <string name="workspace_preview_lines_fmt">%1$d lines</string>
+    <string name="workspace_preview_rendered">Rendered</string>
+    <string name="workspace_preview_source">Source</string>
+    <string name="workspace_preview_pretty">Pretty</string>
+    <string name="workspace_preview_raw">Raw</string>
+    <string name="workspace_preview_svg_fallback">SVG failed to render — show source</string>
+    <string name="workspace_pdf_pages_fmt">%1$d pages</string>
+    <string name="workspace_pdf_failed">Failed to render this PDF</string>
+    <string name="workspace_archive_entries_fmt">%1$d entries</string>
+    <string name="workspace_archive_truncated">Showing the first 200 entries</string>
+    <string name="workspace_binary_title">Binary file</string>
+    <string name="workspace_preview_failed">Preview failed</string>
+
+    <!-- Git tab -->
+    <string name="workspace_git_not_repo">This workspace is not a Git repository yet. Initialize one to stage, commit and inspect diffs.</string>
+    <string name="workspace_git_init">Initialize repository</string>
+    <string name="workspace_git_commit_hint">Commit message…</string>
+    <string name="workspace_git_commit">Commit all</string>
+    <string name="workspace_git_clean">Working tree is clean — nothing to commit</string>
+    <string name="workspace_git_staged_fmt">Staged · %1$d</string>
+    <string name="workspace_git_unstaged_fmt">Unstaged · %1$d</string>
+    <string name="workspace_git_untracked_fmt">Untracked · %1$d</string>
+    <string name="workspace_git_stage_cd">Stage this file</string>
+    <string name="workspace_git_unstage_cd">Unstage this file</string>
+    <string name="workspace_git_no_branch">no branch</string>
+    <string name="workspace_git_diff_close_cd">Close diff</string>
+    <string name="workspace_diff_truncated">Diff too long — truncated</string>
+
+    <!-- Changes & artifacts tab -->
+    <string name="workspace_stat_files">Files changed</string>
+    <string name="workspace_stat_additions">Lines added</string>
+    <string name="workspace_stat_deletions">Lines removed</string>
+    <string name="workspace_stat_not_repo">Not a Git repository — build artifacts are still scanned</string>
+    <string name="workspace_changes_binary">binary</string>
+    <string name="workspace_changes_empty">No pending changes and no build artifacts</string>
+    <string name="workspace_changes_section">Changed files</string>
+    <string name="workspace_changes_count_fmt">%1$d files</string>
+    <string name="workspace_artifacts_title">Build artifacts</string>
+    <string name="workspace_artifacts_total_fmt">%1$d in total</string>
+    <string name="workspace_artifacts_truncated">Too many artifacts — list capped</string>
+    <string name="workspace_artifacts_root_dir">root</string>
+    <string name="workspace_artifacts_open_cd">Open in folder tab</string>
+
+    <!-- Live feed -->
+    <string name="workspace_feed_title">Live events</string>
+
+    <!-- Relative time: value + unit word, e.g. "5 min ago" -->
+    <string name="workspace_rel_time_fmt">%1$d %2$s</string>
+    <string-array name="workspace_rel_time_units">
+        <item>just now</item>
+        <item>sec ago</item>
+        <item>min ago</item>
+        <item>hr ago</item>
+        <item>days ago</item>
+    </string-array>
+
+</resources>
