@@ -14,7 +14,7 @@ lifecycle = "2.8.7"
 junit = "4.13.2"
 # Coil 与宿主同版（app/build.gradle.kts pin 2.6.0）—— 版本一致避免复合构建
 # 时 classpath 双版本；coil-svg 供 SVG 预览渲染
-coil = "2.6.0"
+coil = "2.7.0"
 
 [libraries]
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
