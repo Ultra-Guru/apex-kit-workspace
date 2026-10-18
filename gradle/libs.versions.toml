@@ -5,7 +5,7 @@
 # 直接解析失败。库侧 Kotlin/Compose 编译器取 2.2.21 / BOM 2025.11.01
 #（≤ 宿主版本，F3 规则：库编译器不得高于宿主）。README 兼容矩阵同步更新。
 kotlin = "2.2.21"
-agp = "8.13.2"
+agp = "9.4.1"
 compose-bom = "2025.11.01"
 coroutines = "1.10.2"
 serialization = "1.9.0"
