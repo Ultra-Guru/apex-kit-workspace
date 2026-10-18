@@ -6,7 +6,7 @@
 #（≤ 宿主版本，F3 规则：库编译器不得高于宿主）。README 兼容矩阵同步更新。
 kotlin = "2.2.21"
 agp = "8.13.2"
-compose-bom = "2025.11.01"
+compose-bom = "2026.09.00"
 coroutines = "1.10.2"
 serialization = "1.9.0"
 maven-publish = "0.30.0"
