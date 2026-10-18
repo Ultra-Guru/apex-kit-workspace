@@ -7,7 +7,7 @@ Android 编码工作区浏览器库 —— 服务宿主仓库 [Android-Guru-Agen
 | 模块 | 类型 | 职责 |
 |------|------|------|
 | `workspace-core` | 纯 Kotlin JVM（零 Android 依赖） | git 五解析器（porcelain=v1 -b / numstat -M / unified diff / log / for-each-ref）+ GitEngine 编排 + 文件树扫描 + 多格式预览装配（~110 扩展名）+ 构建产物扫描 + 轮询指纹 watcher + `WorkspaceExplorerController` 单状态机 |
-| `workspace-explorer` | Compose 库（compileSdk 35 / minSdk 26） | 全屏浏览器 UI：胶囊标签栏（文件夹 / Git / 变更和产物）+ 实时跟随开关 + 事件流悬浮窗；coil 2.6.0（与宿主同版）；全部资源 `workspace_` 前缀 |
+| `workspace-explorer` | Compose 库（compileSdk 36 / minSdk 26，与宿主严格对齐） | 全屏浏览器 UI：胶囊标签栏（文件夹 / Git / 变更和产物）+ 实时跟随开关 + 事件流悬浮窗；coil 2.6.0（与宿主同版）；全部资源 `workspace_` 前缀 |
 
 ## 宿主消费（composite build，E1 迁移期）
 

@@ -52,10 +52,11 @@ jobs:
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          # 本库 compileSdk 35：runner 预装多版本 platform；缺失则补装（防御）
-          if [ ! -d "$ANDROID_HOME/platforms/android-35" ]; then
+          # explorer compileSdk 36（与宿主严格对齐）：runner 预装多版本 platform；
+          # 缺失则补装（防御）
+          if [ ! -d "$ANDROID_HOME/platforms/android-36" ]; then
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-              "platforms;android-35" > /dev/null 2>&1 || true
+              "platforms;android-36" > /dev/null 2>&1 || true
           fi
           ls "$ANDROID_HOME/platforms/" || true
 
@@ -136,6 +137,36 @@ jobs:
           ref: main
           path: host-app
 
+      # ── 兄弟库补齐检出（宿主多库 composite build 全量接线）──────────────
+      # 宿主 settings.gradle.kts 同时条件接线三个 kit（browser/standard/workspace）
+      # 且 com.apex.* 坐标无远端仓库可解析 —— 缺任何一个嵌套目录，宿主 :app 的
+      # 依赖解析直接失败（browser-kit PR #19 首次暴露）。按「宿主 lock 优先、
+      # 缺锁回退 main」钉住兄弟库版本 —— 与宿主自身 CI 的 pinned checkout
+      # 同源；被测库 = 本仓检出，兄弟库 = 宿主锁定的已知好版本。
+      - name: Read host sibling kit pins
+        id: host-pins
+        run: |
+          set -euo pipefail
+          BROWSER=$(head -n 1 host-app/gradle/browser-kit.lock 2>/dev/null || echo main)
+          STANDARD=$(head -n 1 host-app/gradle/standard-kit.lock 2>/dev/null || echo main)
+          echo "browser-kit=$BROWSER" >> "$GITHUB_OUTPUT"
+          echo "standard-kit=$STANDARD" >> "$GITHUB_OUTPUT"
+          echo "sibling pins: browser-kit=${BROWSER:0:12} standard-kit=${STANDARD:0:12}"
+
+      - name: Checkout apex-browser-kit (host composite build, pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: Ultra-Guru/apex-browser-kit
+          ref: ${{ steps.host-pins.outputs.browser-kit }}
+          path: host-app/apex-browser-kit
+
+      - name: Checkout apex-standard-kit (host composite build, pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: Ultra-Guru/apex-standard-kit
+          ref: ${{ steps.host-pins.outputs.standard-kit }}
+          path: host-app/apex-standard-kit
+
       - name: Rearrange to sibling layout
         run: |
           # 宿主 settings 的兜底分支按「兄弟目录 ../apex-workspace-kit 或
@@ -150,12 +181,16 @@ jobs:
         run: |
           # 宿主 PR 合入前 settings 没有 workspace-kit 接线 —— 以 notice 跳过
           # 强校验（CI 保持绿，库可独立演进）；合入后自动转强校验。
+          # 三 kit 全量校验：缺任何一库接线同样解析失败。
           if grep -q "apex-workspace-kit" host-app/settings.gradle.kts; then
             echo "wired=true" >> "$GITHUB_OUTPUT"
             echo "✅ 宿主 settings 已接线 apex-workspace-kit —— 执行全量 consumer-check"
           else
             echo "wired=false" >> "$GITHUB_OUTPUT"
             echo "::notice::宿主 Android-Guru-Agent 尚未接线本库（settings.gradle.kts 无 includeBuild 块）—— E1 迁移期跳过强校验。宿主 PR 合入后本 job 自动转为强校验。"
+          fi
+          if [ "$(grep -c 'apex-.*-kit' host-app/settings.gradle.kts)" -lt 3 ]; then
+            echo "::warning::宿主 settings 接线的 kit 少于 3 个（browser/standard/workspace）—— consumer-check 可能缺件"
           fi
 
       - name: Set up JDK 17

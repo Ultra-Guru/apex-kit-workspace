@@ -1,0 +1,39 @@
+# ============================================================================
+# Dependabot — dependency freshness for a published library（对齐
+# apex-browser-kit 的 dependabot.yml —— 补齐本仓缺失的依赖新鲜度通道）。
+#
+# 一个库的全部价值在于消费者能信任它的坐标：陈旧的 AGP/Kotlin/Compose 发布
+# 出去，会在每个下游宿主上静默制造版本冲突。保持工具链常新。
+#
+# `gradle` 覆盖 build.gradle.kts、gradle/libs.versions.toml 与 wrapper；
+# `github-actions` 保持 workflow 自身常新。
+# F3 兼容列车约束（库 ≤ 宿主）由 Supply Chain/版本门禁把关 —— 超前宿主的
+# bump 会被 CI 正确拦截（关闭时注明等待宿主先行升级）。
+# ============================================================================
+version: 2
+
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Kotlin + Compose compiler 联动 —— Compose compiler 插件版本即 Kotlin
+      # 版本，单边 bump 必炸构建。合并为一个 PR。
+      kotlin:
+        patterns: ["kotlin", "compose"]
+      android-toolchain:
+        patterns: ["agp", "android*", "gradle"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "chore(ci)"

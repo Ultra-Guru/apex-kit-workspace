@@ -1,0 +1,88 @@
+name: Tag release
+
+# ═════════════════════════════════════════════════════════════════════════════
+# push main → 发布列车自动打 tag（对齐 browser-kit 的 tag-release.yml —— 补齐
+# 本仓缺失的发布可追溯性）
+#
+# 解决的问题：版本号只存在于两个 build.gradle.kts 里，发布从未留下 git tag ——
+# 「某个坐标对应哪份代码」无从追溯。本 workflow 让 build 文件里的版本列车
+# 落成一个 vTag，发布与源码状态一一对应。
+#
+# 逻辑：
+#   1. 读两模块 build.gradle.kts 的 version =，断言一致（分裂即 fail ——
+#      与 ci.yml 的版本列车门禁同一口径，fail loud）；
+#   2. 与已有 tag（git tag --list 'v*'，sort -V 版本序）比较：
+#      当前版本无对应 tag 且不低于最高 tag → git tag v<version> 并推送
+#      （默认 GITHUB_TOKEN，permissions: contents: write）。
+#
+# 幂等性：
+#   • tag v<version> 已存在 → 跳过（exit 0，不报错）：重跑、同版本多次合入
+#     均无害；
+#   • build 版本低于已有最高 tag（版本回退）→ 跳过并 notice，只前进不强推。
+#
+# 递归触发确认：
+#   • notify-host.yml / ci.yml 均只按 branches: [main] 过滤 push —— tag push
+#     不是分支 push，不会被点燃；
+#   • GitHub 的既定行为是 GITHUB_TOKEN 的 push 不触发任何 workflow（双保险）。
+# ═════════════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: tag-release
+  # 不允许取消进行中的打 tag：连续合入时后一次运行自然退化为幂等跳过
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: tag release-train version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 全量历史：git tag --list 必须看得到全部远端 tag 才能正确判幂等
+          fetch-depth: 0
+
+      - name: Read release train & compare with existing tags
+        id: ver
+        run: |
+          set -euo pipefail
+          CORE=$(grep -m1 '^version = "' workspace-core/build.gradle.kts | sed 's/version = "//;s/"//')
+          EXPLORER=$(grep -m1 '^version = "' workspace-explorer/build.gradle.kts | sed 's/version = "//;s/"//')
+          echo "release train: core=$CORE explorer=$EXPLORER"
+          if [ "$CORE" != "$EXPLORER" ]; then
+            echo "::error::两模块版本分裂（core=$CORE explorer=$EXPLORER）—— 单一发布列车要求先修齐（ci.yml 的版本列车门禁会拦同类漂移）"
+            exit 1
+          fi
+          VERSION="$CORE"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          LATEST=$(git tag --list 'v*' | sed 's/^v//' | sort -V | tail -n1)
+          echo "latest tag: ${LATEST:-<none>}"
+
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "::notice::tag v$VERSION 已存在 —— 幂等跳过"
+            echo "action=skip" >> "$GITHUB_OUTPUT"
+          elif [ -n "${LATEST:-}" ] && [ "$LATEST" != "$VERSION" ] \
+              && [ "$(printf '%s\n%s\n' "$LATEST" "$VERSION" | sort -V | tail -n1)" = "$LATEST" ]; then
+            echo "::notice::最高 tag v$LATEST 已高于 build 版本 $VERSION —— 跳过（只前进，不强推/不覆盖）"
+            echo "action=skip" >> "$GITHUB_OUTPUT"
+          else
+            echo "action=tag" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create & push tag vX.Y.Z
+        if: steps.ver.outputs.action == 'tag'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          echo "🏷️ 已创建并推送 tag v$VERSION（对应发布列车 $VERSION）"
