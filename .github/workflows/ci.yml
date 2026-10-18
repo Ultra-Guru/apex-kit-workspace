@@ -61,7 +61,7 @@ jobs:
           ls "$ANDROID_HOME/platforms/" || true
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # ── 纯度门禁：workspace-core 必须零 Android 依赖 ──────────────────────
       # 库的分层契约（core 纯 JVM / explorer Compose）靠 CI 而不是自觉维护。
@@ -224,7 +224,7 @@ jobs:
 
       - name: Set up Gradle
         if: steps.wiring.outputs.wired == 'true'
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Verify composite dependency substitution
         if: steps.wiring.outputs.wired == 'true'
