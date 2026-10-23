@@ -3,7 +3,7 @@ package com.apex.workspace.core.model
 import com.apex.workspace.core.fs.FileKindResolver
 
 /**
- * apex-workspace-kit 数据模型（冻结契约）。
+ * apex-kit-workspace 数据模型（冻结契约）。
  *
  * 本文件是库的公共数据面：workspace-core 引擎产出、workspace-explorer UI 消费、
  * 宿主 app 只读。改动任何字段都必须同步三方 + 核对调用方。

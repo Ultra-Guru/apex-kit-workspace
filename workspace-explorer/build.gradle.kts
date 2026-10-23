@@ -77,9 +77,9 @@ mavenPublishing {
         version = "0.1.0",
     )
     pom {
-        name.set("Apex Workspace Kit :: Explorer")
+        name.set("Apex Kit Workspace :: Explorer")
         description.set("Compose UI for the workspace explorer page: folder tree, multi-format preview, git panel, changes & artifacts with live agent follow")
-        url.set("https://github.com/Ultra-Guru/apex-workspace-kit")
+        url.set("https://github.com/Ultra-Guru/apex-kit-workspace")
         licenses {
             license {
                 name.set("MIT")
@@ -90,8 +90,8 @@ mavenPublishing {
             developer { id.set("Ultra-Guru") }
         }
         scm {
-            connection.set("scm:git:git@github.com:Ultra-Guru/apex-workspace-kit.git")
-            url.set("https://github.com/Ultra-Guru/apex-workspace-kit")
+            connection.set("scm:git:git@github.com:Ultra-Guru/apex-kit-workspace.git")
+            url.set("https://github.com/Ultra-Guru/apex-kit-workspace")
         }
     }
 }

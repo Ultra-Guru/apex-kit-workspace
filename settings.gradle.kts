@@ -16,6 +16,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "apex-workspace-kit"
+rootProject.name = "apex-kit-workspace"
 include(":workspace-core")
 include(":workspace-explorer")

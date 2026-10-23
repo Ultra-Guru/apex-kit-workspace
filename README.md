@@ -1,4 +1,4 @@
-# apex-workspace-kit
+# apex-kit-workspace
 
 Android 编码工作区浏览器库 —— 服务宿主仓库 [Android-Guru-Agent](https://github.com/Ultra-Guru/Android-Guru-Agent) 的 Coding 模式：全屏工作区浏览器（文件树 / 多格式预览 / Git 面板 / 变更和产物 / 实时跟随 agent 文件操作）。
 
@@ -15,8 +15,8 @@ Android 编码工作区浏览器库 —— 服务宿主仓库 [Android-Guru-Agen
 
 ```
 # 宿主 settings.gradle.kts（已由宿主 PR 接线）
-val workspaceKitSibling = file("../apex-workspace-kit")   // 本地开发：兄弟目录
-val workspaceKitNested  = file("apex-workspace-kit")       // CI：嵌套目录兜底
+val workspaceKitSibling = file("../apex-kit-workspace")   // 本地开发：兄弟目录
+val workspaceKitNested  = file("apex-kit-workspace")       // CI：嵌套目录兜底
 when {
     workspaceKitSibling.isDirectory -> includeBuild(workspaceKitSibling)
     workspaceKitNested.isDirectory  -> includeBuild(workspaceKitNested)

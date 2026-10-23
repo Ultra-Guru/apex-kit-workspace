@@ -32,9 +32,9 @@ mavenPublishing {
         version = "0.1.0",
     )
     pom {
-        name.set("Apex Workspace Kit :: Core")
+        name.set("Apex Kit Workspace :: Core")
         description.set("Pure-Kotlin workspace engine: git status/diff/log parsing, file tree, multi-format preview model, artifact scanning, polling watcher and explorer controller (zero Android deps)")
-        url.set("https://github.com/Ultra-Guru/apex-workspace-kit")
+        url.set("https://github.com/Ultra-Guru/apex-kit-workspace")
         licenses {
             license {
                 name.set("MIT")
@@ -45,8 +45,8 @@ mavenPublishing {
             developer { id.set("Ultra-Guru") }
         }
         scm {
-            connection.set("scm:git:git@github.com:Ultra-Guru/apex-workspace-kit.git")
-            url.set("https://github.com/Ultra-Guru/apex-workspace-kit")
+            connection.set("scm:git:git@github.com:Ultra-Guru/apex-kit-workspace.git")
+            url.set("https://github.com/Ultra-Guru/apex-kit-workspace")
         }
     }
 }

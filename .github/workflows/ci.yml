@@ -1,7 +1,7 @@
 name: CI
 
 # ═════════════════════════════════════════════════════════════════════════════
-# apex-workspace-kit CI —— 面向宿主 Android-Guru-Agent 的库模块流水线。
+# apex-kit-workspace CI —— 面向宿主 Android-Guru-Agent 的库模块流水线。
 #
 # 两个 job：
 #   1. build-test       —— 本仓全部验证：纯度门禁（core 零 Android 依赖）+
@@ -125,10 +125,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout apex-workspace-kit
+      - name: Checkout apex-kit-workspace
         uses: actions/checkout@v7
         with:
-          path: apex-workspace-kit
+          path: apex-kit-workspace
 
       - name: Checkout host (Android-Guru-Agent)
         uses: actions/checkout@v7
@@ -167,13 +167,18 @@ jobs:
           ref: ${{ steps.host-pins.outputs.standard-kit }}
           path: host-app/apex-standard-kit
 
-      - name: Rearrange to sibling layout
+      - name: Rearrange to nested layout (rename transition)
         run: |
-          # 宿主 settings 的兜底分支按「兄弟目录 ../apex-workspace-kit 或
-          # 嵌套目录 apex-workspace-kit」探测；actions/checkout 禁止越出
-          # workspace，所以宿主放 host-app/、库放 host-app/apex-workspace-kit
-          # （嵌套兜底分支）—— 与 ci.yml 的 apex-browser-kit 同款布局。
-          mv apex-workspace-kit host-app/apex-workspace-kit
+          # 宿主 settings 的兜底分支按「兄弟目录 ../apex-kit-workspace 或
+          # 嵌套目录 apex-kit-workspace」探测（改名过渡期新旧双名别名恒命中）；
+          # actions/checkout 禁止越出 workspace，所以宿主放 host-app/、库嵌套
+          # host-app/apex-kit-workspace（真实目录）+ host-app/apex-workspace-kit
+          # （旧名别名）—— 与 apex-browser-kit 同款布局。
+          mv apex-kit-workspace host-app/apex-kit-workspace
+          ln -s host-app/apex-kit-workspace host-app/apex-workspace-kit
+          # 兄弟库新名别名（宿主联动 PR 合并后嵌套探针命中；旧名仍为真目录）
+          ln -s host-app/apex-browser-kit host-app/apex-kit-browser
+          ln -s host-app/apex-standard-kit host-app/apex-kit-standard
           ls host-app/
 
       - name: Check host wiring state (E1 migration guard)
@@ -182,9 +187,9 @@ jobs:
           # 宿主 PR 合入前 settings 没有 workspace-kit 接线 —— 以 notice 跳过
           # 强校验（CI 保持绿，库可独立演进）；合入后自动转强校验。
           # 三 kit 全量校验：缺任何一库接线同样解析失败。
-          if grep -q "apex-workspace-kit" host-app/settings.gradle.kts; then
+          if grep -qE "apex-workspace-kit|apex-kit-workspace" host-app/settings.gradle.kts; then
             echo "wired=true" >> "$GITHUB_OUTPUT"
-            echo "✅ 宿主 settings 已接线 apex-workspace-kit —— 执行全量 consumer-check"
+            echo "✅ 宿主 settings 已接线 apex-kit-workspace（新旧名任一形态）—— 执行全量 consumer-check"
           else
             echo "wired=false" >> "$GITHUB_OUTPUT"
             echo "::notice::宿主 Android-Guru-Agent 尚未接线本库（settings.gradle.kts 无 includeBuild 块）—— E1 迁移期跳过强校验。宿主 PR 合入后本 job 自动转为强校验。"
