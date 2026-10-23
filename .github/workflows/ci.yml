@@ -174,12 +174,14 @@ jobs:
           # actions/checkout 禁止越出 workspace，所以宿主放 host-app/、库嵌套
           # host-app/apex-kit-workspace（真实目录）+ host-app/apex-workspace-kit
           # （旧名别名）—— 与 apex-browser-kit 同款布局。
+          # 注意：符号链接 target 按链接所在目录（host-app/）解析 —— 用裸名，
+          # 不要写 host-app/ 前缀（否则解析成 host-app/host-app/... 悬空）。
           mv apex-kit-workspace host-app/apex-kit-workspace
-          ln -s host-app/apex-kit-workspace host-app/apex-workspace-kit
+          ln -s apex-kit-workspace host-app/apex-workspace-kit
           # 兄弟库新名别名（宿主联动 PR 合并后嵌套探针命中；旧名仍为真目录）
-          ln -s host-app/apex-browser-kit host-app/apex-kit-browser
-          ln -s host-app/apex-standard-kit host-app/apex-kit-standard
-          ls host-app/
+          ln -s apex-browser-kit host-app/apex-kit-browser
+          ln -s apex-standard-kit host-app/apex-kit-standard
+          ls -la host-app/ | grep -E "apex-(kit-)?(workspace|browser|standard)"
 
       - name: Check host wiring state (E1 migration guard)
         id: wiring
