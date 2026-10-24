@@ -71,7 +71,16 @@ internal fun GitTabView(
     val git = state.git
     Column(modifier = modifier.fillMaxSize()) {
         when {
-            git.loading && git.entries.isEmpty() -> SkeletonRows(count = 7)
+            git.loading && git.entries.isEmpty() && git.log.isEmpty() -> SkeletonRows(count = 7)
+
+            // 环境不可用（rootfs 未装 / proot 失败 / 超时）：诚实引导卡，
+            // 不再伪装成「不是仓库」误导用户去点注定失败的初始化。
+            git.unavailableReason != null -> UnavailableCard(
+                reason = git.unavailableReason,
+                busy = git.loading,
+                onRefresh = controller::refreshGit,
+                modifier = Modifier.weight(1f),
+            )
 
             !git.isRepo -> NotRepoCard(
                 busy = git.loading || git.committing,
@@ -94,23 +103,90 @@ internal fun GitTabView(
                     onCommit = controller::commitAll,
                     onConsumeMessage = controller::consumeMessage,
                 )
-                if (git.entries.isEmpty()) {
-                    CleanState(modifier = Modifier.weight(1f))
-                } else {
-                    ChangeGroups(
-                        entries = git.entries,
-                        selectedPath = git.diff?.path,
-                        onRowClick = controller::loadDiff,
-                        onStage = controller::stage,
-                        onUnstage = controller::unstage,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                // ═══ 内容列表：变更分组 + 提交历史 + 分支（单一 LazyColumn）═══
+                // 历史/分支数据早已随 status 聚合加载，此前从未展示——本区
+                // 补齐 Git 页面的完整信息面（宿主需求：页面要完善）。
+                GitContentList(
+                    entries = git.entries,
+                    log = git.log,
+                    branches = git.branches,
+                    selectedPath = git.diff?.path,
+                    onRowClick = controller::loadDiff,
+                    onStage = controller::stage,
+                    onUnstage = controller::unstage,
+                    modifier = Modifier.weight(1f),
+                )
                 git.diff?.let { diff ->
                     DiffPanelView(
                         diff = diff,
                         onClose = controller::closeDiff,
                     )
+                }
+            }
+        }
+    }
+}
+
+// ── 不可用引导卡：环境问题 ≠ 仓库问题 ──
+
+@Composable
+private fun UnavailableCard(
+    reason: String,
+    busy: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ErrorOutline,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(28.dp),
+                )
+                Spacer(Modifier.padding(top = 10.dp))
+                Text(
+                    text = stringResource(R.string.workspace_git_unavailable_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.padding(top = 6.dp))
+                Text(
+                    text = stringResource(R.string.workspace_git_unavailable_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Spacer(Modifier.padding(top = 10.dp))
+                // 原因来自宿主 runner 的 stderr（含「请先安装 Ubuntu」等
+                // 下一步指引），等宽呈现保留可操作性。
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ) {
+                    Text(
+                        text = reason,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .fillMaxWidth(),
+                    )
+                }
+                Spacer(Modifier.padding(top = 12.dp))
+                Button(onClick = onRefresh, enabled = !busy) {
+                    Text(stringResource(R.string.workspace_git_retry))
                 }
             }
         }
@@ -294,11 +370,13 @@ private fun MessageBar(
     }
 }
 
-// ── 变更分组列表 ──
+// ── 内容列表：变更分组 + 提交历史 + 分支（单一 LazyColumn）──
 
 @Composable
-private fun ChangeGroups(
+private fun GitContentList(
     entries: List<GitFileEntry>,
+    log: List<com.apex.workspace.core.model.CommitEntry>,
+    branches: List<com.apex.workspace.core.model.BranchEntry>,
     selectedPath: String?,
     onRowClick: (String) -> Unit,
     onStage: (String) -> Unit,
@@ -308,11 +386,16 @@ private fun ChangeGroups(
     val staged = entries.filter { it.staged }
     val unstaged = entries.filter { !it.staged && it.status != GitFileStatus.UNTRACKED }
     val untracked = entries.filter { it.status == GitFileStatus.UNTRACKED }
+    val dateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US) }
 
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
     ) {
+        // ── 干净态提示（有历史/分支时仍展示，不独占）──
+        if (entries.isEmpty()) {
+            item(key = "clean-state") { CleanState(modifier = Modifier.padding(vertical = 8.dp)) }
+        }
         if (staged.isNotEmpty()) {
             item(key = "group-staged") {
                 GroupHeader(text = stringResource(R.string.workspace_git_staged_fmt, staged.size))
@@ -354,6 +437,148 @@ private fun ChangeGroups(
                     onUnstage = onUnstage,
                 )
             }
+        }
+
+        // ── 提交历史区（log 随 status 聚合加载，最近 30 条）──
+        item(key = "history-header") {
+            GroupHeader(text = stringResource(R.string.workspace_git_history_title))
+        }
+        if (log.isEmpty()) {
+            item(key = "history-empty") {
+                Text(
+                    text = stringResource(R.string.workspace_git_history_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+        } else {
+            items(log, key = { "h-" + it.sha }) { commit ->
+                CommitRow(commit = commit, dateFormat = dateFormat)
+            }
+        }
+
+        // ── 分支区（branches 随 status 聚合加载，当前分支高亮）──
+        item(key = "branches-header") {
+            GroupHeader(text = stringResource(R.string.workspace_git_branches_title))
+        }
+        if (branches.isEmpty()) {
+            item(key = "branches-empty") {
+                Text(
+                    text = stringResource(R.string.workspace_git_no_branch),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+        } else {
+            items(branches, key = { "b-" + it.name }) { branch ->
+                BranchRow2(branch = branch, dateFormat = dateFormat)
+            }
+        }
+    }
+}
+
+// 单条提交行：短哈希 chip + 主题 + 作者/日期副行。
+@Composable
+private fun CommitRow(
+    commit: com.apex.workspace.core.model.CommitEntry,
+    dateFormat: java.text.SimpleDateFormat,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 40.dp)
+            .padding(start = 12.dp, end = 12.dp),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        ) {
+            Text(
+                text = commit.shortSha,
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = commit.subject,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.workspace_git_history_author_fmt, commit.author) +
+                    " · " + dateFormat.format(java.util.Date(commit.dateMs)),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+// 单条分支行：当前分支高亮徽标，远程分支标 origin/ 前缀灰字。
+@Composable
+private fun BranchRow2(
+    branch: com.apex.workspace.core.model.BranchEntry,
+    dateFormat: java.text.SimpleDateFormat,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 36.dp)
+            .padding(start = 12.dp, end = 12.dp),
+    ) {
+        if (branch.current) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            ) {
+                Text(
+                    text = "●",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+        } else {
+            Spacer(Modifier.width(2.dp))
+            Spacer(Modifier.width(14.dp))
+        }
+        Text(
+            text = branch.name,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = if (branch.current) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (branch.isRemote) {
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.workspace_git_branch_remote_cd),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        branch.lastCommitMs?.let { ms ->
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = dateFormat.format(java.util.Date(ms)),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
         }
     }
 }

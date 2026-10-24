@@ -84,10 +84,13 @@ class WorkspaceExplorerController(
 
     // ═══════════════ 生命周期 ═══════════════
 
-    // 启动（幂等）：初始加载树与 Git；follow 开启时顺带启动 watcher
+    // 启动（幂等）：初始加载树与 Git；follow 开启时顺带启动 watcher。
+    // loading 同步置位：launchIo 异步窗口内 GitUiState 默认 isRepo=false，
+    // 会闪一帧误导性的「不是仓库」引导卡（宿主 Issue：Git 页面初始化）。
     fun start() {
         if (started) return
         started = true
+        _state.update { it.copy(git = it.git.copy(loading = true)) }
         refreshTree()
         refreshGit()
         if (_state.value.followEnabled) startFollowing()
@@ -385,18 +388,23 @@ class WorkspaceExplorerController(
 
     private suspend fun doRefreshGit() {
         _state.update { it.copy(git = it.git.copy(loading = true)) }
-        val status = gitEngine.status()
-        val log = if (status.isRepo) gitEngine.log() else emptyList()
-        val branches = if (status.isRepo) gitEngine.branches() else emptyList()
+        // 区分化：INFRA（环境未装/超时）与真实非仓库分开呈现 ——
+        // 不可用时 unavailableReason 直达 UI（诚实引导），不再伪装成
+        // 「不是仓库 + 初始化按钮」（初始化必然失败）。
+        val status = gitEngine.statusDetailed()
+        val unavailable = status.unavailableReason
+        val log = if (status.info.isRepo && unavailable == null) gitEngine.log() else emptyList()
+        val branches = if (status.info.isRepo && unavailable == null) gitEngine.branches() else emptyList()
         _state.update {
             it.copy(
                 git = it.git.copy(
                     loading = false,
-                    isRepo = status.isRepo,
-                    branch = status.branch,
-                    ahead = status.ahead,
-                    behind = status.behind,
-                    entries = status.entries,
+                    isRepo = status.info.isRepo,
+                    unavailableReason = unavailable,
+                    branch = status.info.branch,
+                    ahead = status.info.ahead,
+                    behind = status.info.behind,
+                    entries = status.info.entries,
                     log = log,
                     branches = branches,
                     diff = null,

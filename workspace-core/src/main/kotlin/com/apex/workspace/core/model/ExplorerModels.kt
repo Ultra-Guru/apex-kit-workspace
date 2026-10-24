@@ -301,6 +301,15 @@ data class FeedEntry(
 data class GitUiState(
     val loading: Boolean = false,
     val isRepo: Boolean = false,
+    /**
+     * git 通道不可用原因（null = 通道正常）。
+     *
+     * 区分「不是仓库」（isRepo=false + reason=null → 初始化引导卡）与
+     * 「环境不可用」（reason 非空 → 诚实引导卡：rootfs 未装 / proot 失败 /
+     * 超时等，文案来自宿主 runner 的 stderr 引导）。
+     * 宿主 Issue（Git 页面初始化）：旧实现两态混叠，初始化按钮必然失败。
+     */
+    val unavailableReason: String? = null,
     val branch: String? = null,
     val ahead: Int = 0,
     val behind: Int = 0,

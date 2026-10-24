@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -169,6 +170,43 @@ class GitIntegrationTest {
         runBlocking {
             val status = engine.status()
             assertFalse(status.isRepo)
+            // 区分化：真实非仓库（git 正常报 128）不带 unavailableReason
+            val detailed = engine.statusDetailed()
+            assertFalse(detailed.info.isRepo)
+            assertNull("真实非仓库不是环境问题", detailed.unavailableReason)
+        }
+    }
+
+    @Test
+    fun `环境不可用与真实非仓库区分`() {
+        // INFRA（exit=-1，宿主 rootfs 未装 / proot 失败 / 超时的同款信号）：
+        // unavailableReason 必须携带 stderr 引导文案，不再伪装成「不是仓库」。
+        val infraRunner = GitCommandRunner { _, _ ->
+            GitCommandResult(
+                -1, "",
+                "Ubuntu 环境未安装或未就绪——Git 工具依赖沙箱内预装的 git，请先在终端页安装 Ubuntu"
+            )
+        }
+        val engine = GitEngine(infraRunner) { _, _, _, _ -> }
+        runBlocking {
+            val detailed = engine.statusDetailed()
+            assertFalse(detailed.info.isRepo)
+            assertNotNull("INFRA 失败必须带原因", detailed.unavailableReason)
+            assertTrue(
+                "原因保留宿主引导文案",
+                detailed.unavailableReason!!.contains("Ubuntu")
+            )
+        }
+    }
+
+    @Test
+    fun `INFRA 空文案兜底为通用原因`() {
+        val infraRunner = GitCommandRunner { _, _ -> GitCommandResult(-1, "", "  ") }
+        val engine = GitEngine(infraRunner) { _, _, _, _ -> }
+        runBlocking {
+            val detailed = engine.statusDetailed()
+            assertNotNull(detailed.unavailableReason)
+            assertTrue(detailed.unavailableReason!!.contains("不可用"))
         }
     }
 
