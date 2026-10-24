@@ -169,6 +169,26 @@ internal class GitEngine(
         return BranchParser.parse(r.stdout)
     }
 
+    /**
+     * 提交详情（git 页面「页面完善」）：`git show <sha> --format= -M --unified=3`
+     * → 多文件 [DiffFile]。sha 先清洗（4-40 位十六进制），畸形输入直接空列表
+     * （不进 git，防选项注入与误解析）；merge 提交默认不展开差异，返回空
+     * 由 UI 呈现「无文本差异」说明行。
+     */
+    suspend fun commitDiff(sha: String): List<DiffFile> {
+        val cleaned = sha.trim()
+        if (cleaned.length !in 4..40 || cleaned.any { it !in HEX_DIGITS }) {
+            logWarn("commitDiff 拒绝畸形 sha：${cleaned.take(20)}")
+            return emptyList()
+        }
+        val r = runOrInfra(listOf("show", cleaned, "--format=", "-M", "--unified=3"))
+        if (!r.success) {
+            logWarn("show 失败 exit=${r.exitCode} ${r.stderr.take(120)}")
+            return emptyList()
+        }
+        return UnifiedDiffParser.parse(r.stdout)
+    }
+
     // ── 变更操作 ───────────────────────────────────────
 
     suspend fun stage(path: String): GitCommandResult {
@@ -305,6 +325,9 @@ internal class GitEngine(
         const val SNIFF = 8192
         const val DIFF_TEXT_LIMIT = 100 * 1024
         const val MAX_DIFF_LINES = 400
+
+        /** commitDiff 的 sha 合法字符集（大小写十六进制）。 */
+        const val HEX_DIGITS = "0123456789abcdefABCDEF"
     }
 }
 

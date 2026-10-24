@@ -138,9 +138,11 @@ jobs:
           path: host-app
 
       # ── 兄弟库补齐检出（宿主多库 composite build 全量接线）──────────────
-      # 宿主 settings.gradle.kts 同时条件接线三个 kit（browser/standard/workspace）
-      # 且 com.apex.* 坐标无远端仓库可解析 —— 缺任何一个嵌套目录，宿主 :app 的
-      # 依赖解析直接失败（browser-kit PR #19 首次暴露）。按「宿主 lock 优先、
+      # 宿主 settings.gradle.kts 条件接线五个 kit（browser/standard/loom/
+      # courier/workspace）且 com.apex.* 坐标无远端仓库可解析 —— 缺任何一个
+      # 嵌套目录，宿主 :app 的依赖解析直接失败（browser-kit PR #19 首次暴露；
+      # loom/courier 未检出是本仓 PR #15 consumer-check 红的根因：
+      # com.apex.loomkit:loom-weave:1.0.0 无法解析）。按「宿主 lock 优先、
       # 缺锁回退 main」钉住兄弟库版本 —— 与宿主自身 CI 的 pinned checkout
       # 同源；被测库 = 本仓检出，兄弟库 = 宿主锁定的已知好版本。
       - name: Read host sibling kit pins
@@ -149,9 +151,13 @@ jobs:
           set -euo pipefail
           BROWSER=$(head -n 1 host-app/gradle/browser-kit.lock 2>/dev/null || echo main)
           STANDARD=$(head -n 1 host-app/gradle/standard-kit.lock 2>/dev/null || echo main)
+          LOOM=$(head -n 1 host-app/gradle/loom-kit.lock 2>/dev/null || echo main)
+          COURIER=$(head -n 1 host-app/gradle/courier-kit.lock 2>/dev/null || echo main)
           echo "browser-kit=$BROWSER" >> "$GITHUB_OUTPUT"
           echo "standard-kit=$STANDARD" >> "$GITHUB_OUTPUT"
-          echo "sibling pins: browser-kit=${BROWSER:0:12} standard-kit=${STANDARD:0:12}"
+          echo "loom-kit=$LOOM" >> "$GITHUB_OUTPUT"
+          echo "courier-kit=$COURIER" >> "$GITHUB_OUTPUT"
+          echo "sibling pins: browser=${BROWSER:0:12} standard=${STANDARD:0:12} loom=${LOOM:0:12} courier=${COURIER:0:12}"
 
       - name: Checkout apex-browser-kit (host composite build, pinned)
         uses: actions/checkout@v7
@@ -167,6 +173,20 @@ jobs:
           ref: ${{ steps.host-pins.outputs.standard-kit }}
           path: host-app/apex-standard-kit
 
+      - name: Checkout apex-kit-loom (host composite build, pinned)
+        uses: actions/checkout@v7
+        with:
+          repository: Ultra-Guru/apex-kit-loom
+          ref: ${{ steps.host-pins.outputs.loom-kit }}
+          path: host-app/apex-kit-loom
+
+      - name: Checkout apex-kit-courier (host composite build, pinned)
+        uses: actions/checkout@v7
+        with:
+          repository: Ultra-Guru/apex-kit-courier
+          ref: ${{ steps.host-pins.outputs.courier-kit }}
+          path: host-app/apex-kit-courier
+
       - name: Rearrange to nested layout (rename transition)
         run: |
           # 宿主 settings 的兜底分支按「兄弟目录 ../apex-kit-workspace 或
@@ -181,14 +201,16 @@ jobs:
           # 兄弟库新名别名（宿主联动 PR 合并后嵌套探针命中；旧名仍为真目录）
           ln -s apex-browser-kit host-app/apex-kit-browser
           ln -s apex-standard-kit host-app/apex-kit-standard
-          ls -la host-app/ | grep -E "apex-(kit-)?(workspace|browser|standard)"
+          # loom/courier 仓库名即探测名（无改名过渡），直嵌即可
+          ls -la host-app/ | grep -E "apex-(kit-)?(workspace|browser|standard|loom|courier)"
 
       - name: Check host wiring state (E1 migration guard)
         id: wiring
         run: |
           # 宿主 PR 合入前 settings 没有 workspace-kit 接线 —— 以 notice 跳过
           # 强校验（CI 保持绿，库可独立演进）；合入后自动转强校验。
-          # 三 kit 全量校验：缺任何一库接线同样解析失败。
+          # 五 kit 全量校验：缺任何一库接线同样解析失败（新名 apex-kit-*
+          # 与旧名 apex-*-kit 两种拼写都计入）。
           if grep -qE "apex-workspace-kit|apex-kit-workspace" host-app/settings.gradle.kts; then
             echo "wired=true" >> "$GITHUB_OUTPUT"
             echo "✅ 宿主 settings 已接线 apex-kit-workspace（新旧名任一形态）—— 执行全量 consumer-check"
@@ -196,8 +218,14 @@ jobs:
             echo "wired=false" >> "$GITHUB_OUTPUT"
             echo "::notice::宿主 Android-Guru-Agent 尚未接线本库（settings.gradle.kts 无 includeBuild 块）—— E1 迁移期跳过强校验。宿主 PR 合入后本 job 自动转为强校验。"
           fi
-          if [ "$(grep -c 'apex-.*-kit' host-app/settings.gradle.kts)" -lt 3 ]; then
-            echo "::warning::宿主 settings 接线的 kit 少于 3 个（browser/standard/workspace）—— consumer-check 可能缺件"
+          KIT_PRESENT=0
+          for KIT in browser standard loom courier workspace; do
+            if grep -qE "apex-(kit-)?${KIT}" host-app/settings.gradle.kts; then
+              KIT_PRESENT=$((KIT_PRESENT+1))
+            fi
+          done
+          if [ "$KIT_PRESENT" -lt 5 ]; then
+            echo "::warning::宿主 settings 接线的 kit 少于 5 个（现 $KIT_PRESENT/5：browser/standard/loom/courier/workspace）—— consumer-check 可能缺件"
           fi
 
       - name: Set up JDK 17

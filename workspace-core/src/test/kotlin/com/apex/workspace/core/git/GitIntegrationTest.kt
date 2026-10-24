@@ -163,6 +163,36 @@ class GitIntegrationTest {
     }
 
     @Test
+    fun `commitDiff 展开多文件差异与畸形 sha 防御`() {
+        assumeTrue(gitAvailable())
+        val ws = newRepo()
+        File(ws, "a.txt").writeText("line1\nline2\n")
+        File(ws, "b.kt").writeText("fun main() {}\n")
+        commitAll(ws, "first")
+        File(ws, "a.txt").writeText("line1\nline2-changed\nline3\n")
+        File(ws, "c.py").writeText("x = 1\n")
+        File(ws, "b.kt").delete()
+        commitAll(ws, "second")
+        val engine = GitEngine(ProcessGitRunner(ws)) { _, _, _, _ -> }
+        runBlocking {
+            val sha = engine.log()[0].sha
+            val files = engine.commitDiff(sha)
+            assertEquals("git show 展开三个文件", 3, files.size)
+            val a = files.single { it.path == "a.txt" }
+            assertEquals(2, a.additions)
+            assertEquals(1, a.deletions)
+            assertTrue(a.hunks.isNotEmpty())
+            val c = files.single { it.path == "c.py" }
+            assertEquals(1, c.additions)
+
+            // 畸形 sha：不进 git，直接空列表（防选项注入）
+            assertTrue(engine.commitDiff("--exec=evil").isEmpty())
+            assertTrue(engine.commitDiff("").isEmpty())
+            assertTrue(engine.commitDiff("zzzz").isEmpty())
+        }
+    }
+
+    @Test
     fun `非仓库识别`() {
         assumeTrue(gitAvailable())
         val plain = tmp.newFolder("plain" + System.nanoTime())

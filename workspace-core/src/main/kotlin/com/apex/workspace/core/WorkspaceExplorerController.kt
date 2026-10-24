@@ -11,6 +11,7 @@ import com.apex.workspace.core.fs.FileKindResolver
 import com.apex.workspace.core.fs.FileTreeScanner
 import com.apex.workspace.core.git.GitEngine
 import com.apex.workspace.core.model.ChangesSummary
+import com.apex.workspace.core.model.CommitDetail
 import com.apex.workspace.core.model.DiffFile
 import com.apex.workspace.core.model.ExplorerTab
 import com.apex.workspace.core.model.ExplorerUiState
@@ -110,7 +111,7 @@ class WorkspaceExplorerController(
             it.copy(
                 preview = null,
                 previewLoading = false,
-                git = it.git.copy(diff = null, diffLoading = false),
+                git = it.git.copy(diff = null, diffLoading = false, commitDetail = null),
                 changes = it.changes.copy(inlineDiffs = emptyMap()),
                 tree = it.tree.copy(expandedDirs = setOf(""), filter = ""),
             )
@@ -226,6 +227,34 @@ class WorkspaceExplorerController(
 
     fun closeDiff() {
         _state.update { it.copy(git = it.git.copy(diff = null, diffLoading = false)) }
+    }
+
+    // ═══ 提交详情子页（Git 页面「页面完善」）═══
+
+    // 历史条目点击 → 提交详情（git show 展开多文件差异）。
+    // 先用历史快照立即占位（loading 态），差异就位后补齐。
+    fun openCommitDetail(sha: String) {
+        val commit = _state.value.git.log.firstOrNull { it.sha == sha || it.shortSha == sha }
+            ?: return
+        _state.update {
+            it.copy(git = it.git.copy(commitDetail = CommitDetail(commit = commit, loading = true)))
+        }
+        launchIo {
+            val files = gitEngine.commitDiff(commit.sha)
+            _state.update { state ->
+                val detail = state.git.commitDetail
+                if (detail?.commit?.sha != commit.sha) {
+                    // 用户已退出或换了别的提交——丢弃迟到结果
+                    state
+                } else {
+                    state.copy(git = state.git.copy(commitDetail = detail.copy(files = files, loading = false)))
+                }
+            }
+        }
+    }
+
+    fun closeCommitDetail() {
+        _state.update { it.copy(git = it.git.copy(commitDetail = null)) }
     }
 
     // 暂存单文件

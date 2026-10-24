@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.rounded.CallSplit
@@ -69,14 +70,17 @@ internal fun GitTabView(
     modifier: Modifier = Modifier,
 ) {
     val git = state.git
+    // 跨模块属性 smart cast 不可用（UnavailableCard 形参非空）——先取局部
+    // val 快照（不可变只读局部量可安全推断非空）。
+    val unavailableReason = git.unavailableReason
     Column(modifier = modifier.fillMaxSize()) {
         when {
             git.loading && git.entries.isEmpty() && git.log.isEmpty() -> SkeletonRows(count = 7)
 
             // 环境不可用（rootfs 未装 / proot 失败 / 超时）：诚实引导卡，
             // 不再伪装成「不是仓库」误导用户去点注定失败的初始化。
-            git.unavailableReason != null -> UnavailableCard(
-                reason = git.unavailableReason,
+            unavailableReason != null -> UnavailableCard(
+                reason = unavailableReason,
                 busy = git.loading,
                 onRefresh = controller::refreshGit,
                 modifier = Modifier.weight(1f),
@@ -89,38 +93,48 @@ internal fun GitTabView(
             )
 
             else -> {
-                BranchRow(
-                    branch = git.branch,
-                    ahead = git.ahead,
-                    behind = git.behind,
-                    loading = git.loading,
-                    onRefresh = controller::refreshGit,
-                )
-                CommitBox(
-                    committing = git.committing,
-                    message = state.message,
-                    messageIsError = state.messageIsError,
-                    onCommit = controller::commitAll,
-                    onConsumeMessage = controller::consumeMessage,
-                )
-                // ═══ 内容列表：变更分组 + 提交历史 + 分支（单一 LazyColumn）═══
-                // 历史/分支数据早已随 status 聚合加载，此前从未展示——本区
-                // 补齐 Git 页面的完整信息面（宿主需求：页面要完善）。
-                GitContentList(
-                    entries = git.entries,
-                    log = git.log,
-                    branches = git.branches,
-                    selectedPath = git.diff?.path,
-                    onRowClick = controller::loadDiff,
-                    onStage = controller::stage,
-                    onUnstage = controller::unstage,
-                    modifier = Modifier.weight(1f),
-                )
-                git.diff?.let { diff ->
-                    DiffPanelView(
-                        diff = diff,
-                        onClose = controller::closeDiff,
+                // ═══ 提交详情子页：历史条目点击进入，内容列表让位 ═══
+                git.commitDetail?.let { detail ->
+                    CommitDetailView(
+                        detail = detail,
+                        onBack = controller::closeCommitDetail,
+                        modifier = Modifier.weight(1f),
                     )
+                } ?: run {
+                    BranchRow(
+                        branch = git.branch,
+                        ahead = git.ahead,
+                        behind = git.behind,
+                        loading = git.loading,
+                        onRefresh = controller::refreshGit,
+                    )
+                    CommitBox(
+                        committing = git.committing,
+                        message = state.message,
+                        messageIsError = state.messageIsError,
+                        onCommit = controller::commitAll,
+                        onConsumeMessage = controller::consumeMessage,
+                    )
+                    // ═══ 内容列表：变更分组 + 提交历史 + 分支（单一 LazyColumn）═══
+                    // 历史/分支数据早已随 status 聚合加载，此前从未展示——本区
+                    // 补齐 Git 页面的完整信息面（宿主需求：页面要完善）。
+                    GitContentList(
+                        entries = git.entries,
+                        log = git.log,
+                        branches = git.branches,
+                        selectedPath = git.diff?.path,
+                        onRowClick = controller::loadDiff,
+                        onStage = controller::stage,
+                        onUnstage = controller::unstage,
+                        onCommitClick = controller::openCommitDetail,
+                        modifier = Modifier.weight(1f),
+                    )
+                    git.diff?.let { diff ->
+                        DiffPanelView(
+                            diff = diff,
+                            onClose = controller::closeDiff,
+                        )
+                    }
                 }
             }
         }
@@ -381,6 +395,7 @@ private fun GitContentList(
     onRowClick: (String) -> Unit,
     onStage: (String) -> Unit,
     onUnstage: (String) -> Unit,
+    onCommitClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val staged = entries.filter { it.staged }
@@ -454,7 +469,7 @@ private fun GitContentList(
             }
         } else {
             items(log, key = { "h-" + it.sha }) { commit ->
-                CommitRow(commit = commit, dateFormat = dateFormat)
+                CommitRow(commit = commit, dateFormat = dateFormat, onClick = onCommitClick)
             }
         }
 
@@ -479,17 +494,19 @@ private fun GitContentList(
     }
 }
 
-// 单条提交行：短哈希 chip + 主题 + 作者/日期副行。
+// 单条提交行：短哈希 chip + 主题 + 作者/日期副行；点击进提交详情子页。
 @Composable
 private fun CommitRow(
     commit: com.apex.workspace.core.model.CommitEntry,
     dateFormat: java.text.SimpleDateFormat,
+    onClick: (String) -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
+            .heightIn(min = 44.dp)
+            .clickable(role = Role.Button) { onClick(commit.sha) }
             .padding(start = 12.dp, end = 12.dp),
     ) {
         Surface(
@@ -591,6 +608,136 @@ private fun GroupHeader(text: String) {
         color = MaterialTheme.colorScheme.tertiary,
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
     )
+}
+
+// ═══ 提交详情子页：返回行 + 提交元信息 + 多文件差异 ═══
+// 历史条目点击进入（GitContentList 的 onCommitClick）。loading 期骨架；
+// 空 files（merge 提交 / 二进制 / 畸形 sha）给「无文本差异」说明行。
+
+@Composable
+private fun CommitDetailView(
+    detail: com.apex.workspace.core.model.CommitDetail,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val commit = detail.commit
+    val dateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US) }
+    if (detail.loading && detail.files.isEmpty()) {
+        SkeletonRows(count = 6, modifier = modifier)
+        return
+    }
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
+    ) {
+        // ── 返回行 + 标题 ──
+        item(key = "detail-back") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button) { onBack() }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.workspace_git_commit_detail_back_cd),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = stringResource(R.string.workspace_git_commit_detail_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        // ── 提交元信息卡：哈希 chip + 主题 + 作者/日期 + 正文 ──
+        item(key = "detail-meta") {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        ) {
+                            Text(
+                                text = commit.shortSha,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                        Text(
+                            text = stringResource(
+                                R.string.workspace_git_commit_detail_files_fmt,
+                                detail.files.size,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.padding(top = 6.dp))
+                    Text(
+                        text = commit.subject,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.workspace_git_history_author_fmt,
+                            commit.author,
+                        ) + " · " + dateFormat.format(java.util.Date(commit.dateMs)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    commit.body?.takeIf { it.isNotBlank() }?.let { body ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                        ) {
+                            Text(
+                                text = body,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        // ── 差异区：每个文件一张 DiffPanelView（复用现有渲染）──
+        if (detail.files.isEmpty()) {
+            item(key = "detail-empty") {
+                Text(
+                    text = stringResource(R.string.workspace_git_commit_detail_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
+        } else {
+            items(detail.files, key = { "cd-" + it.path + it.oldPath }) { file ->
+                DiffPanelView(diff = file, onClose = null)
+            }
+        }
+    }
 }
 
 // 单行变更：状态徽标 + 路径（rename 附旧路径灰字）+ 暂存/取消暂存按钮。
