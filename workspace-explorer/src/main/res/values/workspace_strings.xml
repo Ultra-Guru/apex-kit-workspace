@@ -59,6 +59,20 @@
     <string name="workspace_git_no_branch">no branch</string>
     <string name="workspace_git_diff_close_cd">Close diff</string>
     <string name="workspace_diff_truncated">Diff too long — truncated</string>
+    <!-- Git tab: unavailable guidance + history / branches sections -->
+    <string name="workspace_git_unavailable_title">Git is unavailable right now</string>
+    <string name="workspace_git_unavailable_hint">This is an environment issue, not a repository one — initializing would fail too. Follow the guide below, then reopen this tab.</string>
+    <string name="workspace_git_history_title">Commit history</string>
+    <string name="workspace_git_history_empty">No commits yet</string>
+    <string name="workspace_git_history_author_fmt">by %1$s</string>
+    <string name="workspace_git_branches_title">Branches</string>
+    <string name="workspace_git_commit_detail_title">Commit detail</string>
+    <string name="workspace_git_commit_detail_back_cd">Back to git overview</string>
+    <string name="workspace_git_commit_detail_files_fmt">%1$d file(s) changed</string>
+    <string name="workspace_git_commit_detail_empty">No textual diff in this commit (merge commit or binary-only changes)</string>
+    <string name="workspace_git_branch_current_cd">current branch</string>
+    <string name="workspace_git_branch_remote_cd">remote branch</string>
+    <string name="workspace_git_retry">Retry</string>
 
     <!-- Changes & artifacts tab -->
     <string name="workspace_stat_files">Files changed</string>

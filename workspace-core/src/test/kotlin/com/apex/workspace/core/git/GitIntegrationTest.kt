@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -162,6 +163,36 @@ class GitIntegrationTest {
     }
 
     @Test
+    fun `commitDiff 展开多文件差异与畸形 sha 防御`() {
+        assumeTrue(gitAvailable())
+        val ws = newRepo()
+        File(ws, "a.txt").writeText("line1\nline2\n")
+        File(ws, "b.kt").writeText("fun main() {}\n")
+        commitAll(ws, "first")
+        File(ws, "a.txt").writeText("line1\nline2-changed\nline3\n")
+        File(ws, "c.py").writeText("x = 1\n")
+        File(ws, "b.kt").delete()
+        commitAll(ws, "second")
+        val engine = GitEngine(ProcessGitRunner(ws)) { _, _, _, _ -> }
+        runBlocking {
+            val sha = engine.log()[0].sha
+            val files = engine.commitDiff(sha)
+            assertEquals("git show 展开三个文件", 3, files.size)
+            val a = files.single { it.path == "a.txt" }
+            assertEquals(2, a.additions)
+            assertEquals(1, a.deletions)
+            assertTrue(a.hunks.isNotEmpty())
+            val c = files.single { it.path == "c.py" }
+            assertEquals(1, c.additions)
+
+            // 畸形 sha：不进 git，直接空列表（防选项注入）
+            assertTrue(engine.commitDiff("--exec=evil").isEmpty())
+            assertTrue(engine.commitDiff("").isEmpty())
+            assertTrue(engine.commitDiff("zzzz").isEmpty())
+        }
+    }
+
+    @Test
     fun `非仓库识别`() {
         assumeTrue(gitAvailable())
         val plain = tmp.newFolder("plain" + System.nanoTime())
@@ -169,6 +200,43 @@ class GitIntegrationTest {
         runBlocking {
             val status = engine.status()
             assertFalse(status.isRepo)
+            // 区分化：真实非仓库（git 正常报 128）不带 unavailableReason
+            val detailed = engine.statusDetailed()
+            assertFalse(detailed.info.isRepo)
+            assertNull("真实非仓库不是环境问题", detailed.unavailableReason)
+        }
+    }
+
+    @Test
+    fun `环境不可用与真实非仓库区分`() {
+        // INFRA（exit=-1，宿主 rootfs 未装 / proot 失败 / 超时的同款信号）：
+        // unavailableReason 必须携带 stderr 引导文案，不再伪装成「不是仓库」。
+        val infraRunner = GitCommandRunner { _, _ ->
+            GitCommandResult(
+                -1, "",
+                "Ubuntu 环境未安装或未就绪——Git 工具依赖沙箱内预装的 git，请先在终端页安装 Ubuntu"
+            )
+        }
+        val engine = GitEngine(infraRunner) { _, _, _, _ -> }
+        runBlocking {
+            val detailed = engine.statusDetailed()
+            assertFalse(detailed.info.isRepo)
+            assertNotNull("INFRA 失败必须带原因", detailed.unavailableReason)
+            assertTrue(
+                "原因保留宿主引导文案",
+                detailed.unavailableReason!!.contains("Ubuntu")
+            )
+        }
+    }
+
+    @Test
+    fun `INFRA 空文案兜底为通用原因`() {
+        val infraRunner = GitCommandRunner { _, _ -> GitCommandResult(-1, "", "  ") }
+        val engine = GitEngine(infraRunner) { _, _, _, _ -> }
+        runBlocking {
+            val detailed = engine.statusDetailed()
+            assertNotNull(detailed.unavailableReason)
+            assertTrue(detailed.unavailableReason!!.contains("不可用"))
         }
     }
 

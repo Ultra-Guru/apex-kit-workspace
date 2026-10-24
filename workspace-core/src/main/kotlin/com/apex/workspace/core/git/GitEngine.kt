@@ -29,15 +29,39 @@ internal class GitEngine(
     private val logger: KitLogger,
 ) {
 
-    // ── 只读查询 ───────────────────────────────────────
+    /**
+     * status 聚合的区分化结果：**「不可用」≠「不是仓库」**。
+     *
+     * - [info]：解析产物（与旧契约一致；不可用时 isRepo=false）；
+     * - [unavailableReason]：基础设施失败（exit=INFRA，如宿主 rootfs 未装、
+     *   proot 不可用、超时）的人类可读原因。null = git 通道正常（是仓库或
+     *   真实的非仓库）。
+     *
+     * 旧实现把 INFRA 与「不是 git 仓库」都折叠成 isRepo=false，Git 页面
+     * 误导性亮出「初始化仓库」按钮——点了必然失败（真实原因是环境未装）。
+     * 本结构让控制器能把两种状态分开呈现（宿主 Issue：Git 页面初始化）。
+     */
+    internal class StatusResult(val info: GitStatusInfo, val unavailableReason: String?)
 
-    suspend fun status(): GitStatusInfo {
+    /** 兼容入口：只关心 info 的调用方（changes 聚合）。 */
+    suspend fun status(): GitStatusInfo = statusDetailed().info
+
+    /** 区分化入口：Git 页面刷新用（不可用原因直达 UI）。 */
+    suspend fun statusDetailed(): StatusResult {
         val r = runOrInfra(listOf("status", "--porcelain=v1", "-b"))
         if (!r.success) {
+            if (r.exitCode == GitCommandResult.INFRA_EXIT_CODE) {
+                logWarn("status 不可用 exit=${r.exitCode} ${r.stderr.take(200)}")
+                // stderr 即宿主 runner 的引导文案（含「请先安装 Ubuntu」等
+                // 下一步指引）；兜底空串换通用文案。
+                val reason = r.stderr.trim().ifEmpty { "git 执行通道不可用（exit ${r.exitCode}）" }
+                return StatusResult(GitStatusInfo(false, null, 0, 0, emptyList()), reason)
+            }
+            // 真实 git 报错（128 非仓库 / 其它）：通道正常，按非仓库呈现
             logWarn("status 失败 exit=${r.exitCode} ${r.stderr.take(200)}")
-            return GitStatusInfo(false, null, 0, 0, emptyList())
+            return StatusResult(GitStatusInfo(false, null, 0, 0, emptyList()), null)
         }
-        return StatusParser.parse(r.stdout)
+        return StatusResult(StatusParser.parse(r.stdout), null)
     }
 
     suspend fun changes(root: File?): ChangesSummary {
@@ -143,6 +167,26 @@ internal class GitEngine(
             return emptyList()
         }
         return BranchParser.parse(r.stdout)
+    }
+
+    /**
+     * 提交详情（git 页面「页面完善」）：`git show <sha> --format= -M --unified=3`
+     * → 多文件 [DiffFile]。sha 先清洗（4-40 位十六进制），畸形输入直接空列表
+     * （不进 git，防选项注入与误解析）；merge 提交默认不展开差异，返回空
+     * 由 UI 呈现「无文本差异」说明行。
+     */
+    suspend fun commitDiff(sha: String): List<DiffFile> {
+        val cleaned = sha.trim()
+        if (cleaned.length !in 4..40 || cleaned.any { it !in HEX_DIGITS }) {
+            logWarn("commitDiff 拒绝畸形 sha：${cleaned.take(20)}")
+            return emptyList()
+        }
+        val r = runOrInfra(listOf("show", cleaned, "--format=", "-M", "--unified=3"))
+        if (!r.success) {
+            logWarn("show 失败 exit=${r.exitCode} ${r.stderr.take(120)}")
+            return emptyList()
+        }
+        return UnifiedDiffParser.parse(r.stdout)
     }
 
     // ── 变更操作 ───────────────────────────────────────
@@ -281,6 +325,9 @@ internal class GitEngine(
         const val SNIFF = 8192
         const val DIFF_TEXT_LIMIT = 100 * 1024
         const val MAX_DIFF_LINES = 400
+
+        /** commitDiff 的 sha 合法字符集（大小写十六进制）。 */
+        const val HEX_DIGITS = "0123456789abcdefABCDEF"
     }
 }
 

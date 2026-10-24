@@ -59,6 +59,20 @@
     <string name="workspace_git_no_branch">无分支</string>
     <string name="workspace_git_diff_close_cd">关闭差异</string>
     <string name="workspace_diff_truncated">差异过长，已截断</string>
+    <!-- Git 标签：不可用引导 + 提交历史 / 分支区 -->
+    <string name="workspace_git_unavailable_title">Git 暂不可用</string>
+    <string name="workspace_git_unavailable_hint">这是环境问题而非仓库问题——初始化同样会失败。请按下方引导处理后再回到本页。</string>
+    <string name="workspace_git_history_title">提交历史</string>
+    <string name="workspace_git_history_empty">还没有任何提交</string>
+    <string name="workspace_git_history_author_fmt">作者 %1$s</string>
+    <string name="workspace_git_branches_title">分支</string>
+    <string name="workspace_git_commit_detail_title">提交详情</string>
+    <string name="workspace_git_commit_detail_back_cd">返回 Git 总览</string>
+    <string name="workspace_git_commit_detail_files_fmt">变更 %1$d 个文件</string>
+    <string name="workspace_git_commit_detail_empty">此提交没有文本差异（合并提交或仅二进制变更）</string>
+    <string name="workspace_git_branch_current_cd">当前分支</string>
+    <string name="workspace_git_branch_remote_cd">远程分支</string>
+    <string name="workspace_git_retry">重试</string>
 
     <!-- 变更和产物标签 -->
     <string name="workspace_stat_files">变更文件</string>
